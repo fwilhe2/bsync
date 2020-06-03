@@ -98,7 +98,12 @@ def printerr(s):
 
 def ssh_master_init(ssh):
 	import tempfile, atexit
-	tmpdir = tempfile.mkdtemp()
+	import uuid
+	from pathlib import Path
+	# tmpdir = tempfile.mkdtemp()
+	# import ipdb; ipdb.set_trace()
+	tmpdir = Path(f'/tmp/_bsync_/{str(uuid.uuid4())[:7]}')
+	tmpdir.mkdir(exist_ok=True, parents=True)
 	ssh.sock = os.path.join(tmpdir, "bsync_%r@%h:%p")
 	try:
 		subprocess.check_call( ssh.getcmdlist()+["-fNM"] )
