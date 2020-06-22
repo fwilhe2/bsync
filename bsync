@@ -118,8 +118,8 @@ def ssh_master_clean(tmpdir, ssh):
 	with open(os.devnull, 'w') as devnull:
 		ret = subprocess.call(ssh.getcmdlist()+["-Oexit"], stderr=devnull)
 	if ret != 0:
-	        printerr("Error in ssh master exit cmd.")
-		
+		printerr("Error in ssh master exit cmd.")
+
 	try:
 		os.rmdir(tmpdir) # remove tmpdir (should be empty)
 	except OSError:
