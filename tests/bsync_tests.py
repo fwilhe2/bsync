@@ -19,6 +19,7 @@ class TestBase(unittest.TestCase):
         pass
 
     def bsync(self, args):
+        print(" ".join(["bsync"] + args + [self.dir1, self.dir2]))
         with subprocess.Popen(["bsync"] + args + [self.dir1, self.dir2], shell=True, stdout=subprocess.PIPE) as proc:
             fd = proc.stdout
             output = fd.read()

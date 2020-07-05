@@ -78,7 +78,7 @@ class SshCon():
         self.customargs = shlex.split(customargs)
 
     def getcmdlist(self):
-        port = ["-p" + self.port] if self.port != None else []
+        port = ["-p" + self.port] if self.port is not None else []
         return ["ssh"] + ["-S" + self.sock] + port + self.customargs + [self.userhost]
 
     def getcmdstr(self):
@@ -170,7 +170,7 @@ def rsync_init(sshSrc, dirnameSrc, sshDst, dirnameDst):
         rsyncdst += "/"
 
     args = ["-a", "--files-from=-", "--from0", "--no-implied-dirs", "--out-format=rsync: %n%L"]
-    if ssh != None:
+    if ssh is not None:
         cmdlist = ssh.getcmdlist()
         cmdlist.remove(ssh.userhost)
         args.append("-e " + joinargs(cmdlist))
@@ -180,7 +180,7 @@ def rsync_init(sshSrc, dirnameSrc, sshDst, dirnameDst):
 
 def rsync_check_install(ssh):
     remote_check = ""
-    if ssh != None:
+    if ssh is not None:
         remote_check = " && " + ssh.getcmdstr() + " which rsync"
 
     with open(os.devnull, 'w') as devnull:
@@ -206,7 +206,7 @@ def find_check_command(ssh):
             except:
                 sys.exit("Error: local GNU find not found. " + findhelp)
 
-        if ssh != None:
+        if ssh is not None:
             if subprocess.call(ssh.getcmdlist() + ["find"] + findargs, stdout=devnull, stderr=devnull) == 0:
                 remotefind = "find"
             elif subprocess.call(ssh.getcmdlist() + ["gfind"] + findargs, stdout=devnull, stderr=devnull) == 0:
@@ -225,7 +225,7 @@ def fs_check_perms(ssh, dirname):
     testpermcmd = "umask 777; touch " + testtmpfile + "; [ \"$(stat -c%a " + testtmpfile + ")\" = \"0\" ]; ret=$?; rm -f " + testtmpfile + "; exit $ret"
 
     with open(os.devnull, 'w') as devnull:
-        if ssh == None:
+        if ssh is None:
             ret = subprocess.call(testpermcmd, shell=True, stdout=devnull, stderr=devnull)
         else:
             ret = subprocess.call(ssh.getcmdlist() + [testpermcmd], stdout=devnull, stderr=devnull)
@@ -250,7 +250,7 @@ def rsync_check(sshSrc, dirnameSrc, sshDst, dirnameDst):
         rsyncdst += "/"
 
     args = ["-anO", "--delete", "--out-format=%n%L", "--exclude=/.bsync-snap-*"]
-    if ssh != None:
+    if ssh is not None:
         args.append("-e " + ssh.getcmdstr())
 
     diff = subprocess.check_output(["rsync"] + args + [rsyncsrc, rsyncdst], universal_newlines=True).split("\n")
@@ -270,14 +270,14 @@ def fix_unresolved(ssh, dirname, snapname, unresolved):
     f = None
     try:
         # if we need a ssh shell
-        if ssh != None:
+        if ssh is not None:
             cmd = ["cat - > %s" % quote(dirname + "/" + snapname) + ".tmp"]
             sbproc = subprocess.Popen(ssh.getcmdlist() + cmd, stdin=subprocess.PIPE)
         else:
             f = open(dirname + "/" + snapname + ".tmp", "w")
             sbproc = subprocess.Popen(["cat", "-"], stdin=subprocess.PIPE, stdout=f)
 
-        if sbproc == None:
+        if sbproc is None:
             sys.exit("Error updating a snapshot.")
 
         # filter out unresolved records from the current snapshot
@@ -285,8 +285,8 @@ def fix_unresolved(ssh, dirname, snapname, unresolved):
         gen = fileLineIter(fd)
 
         record = read_file_record(gen)
-        if record == None: sys.exit("Error reading files from filelist")  # should be at least one record (dir root)
-        while record != None:
+        if record is None: sys.exit("Error reading files from filelist")  # should be at least one record (dir root)
+        while record is not None:
             inode, path, type, date, size, perms, rec = record
             if path not in unresolved:
                 sbproc.stdin.write(rec + b"\0")
@@ -294,14 +294,14 @@ def fix_unresolved(ssh, dirname, snapname, unresolved):
 
         # append unresolved records
         for rec in unresolved.values():
-            if rec != None:
+            if rec is not None:
                 sbproc.stdin.write(rec + b"\0")
         sbproc.stdin.flush()
     finally:
         # cleanup
         sbproc.stdin.close()
         sbproc.wait()
-        if f != None:
+        if f is not None:
             f.close()
         if sbproc.returncode != 0:
             sys.exit("Error in process updating a snapshot.")
@@ -313,12 +313,12 @@ def make_snapshot(ssh, dirname, oldsnapname, newsnapname, unresolved):
     global findformat, findcmdlocal, findcmdremote
 
     cmd = [dirname, "-fprintf", dirname + newsnapname, findformat]
-    if oldsnapname != None:
+    if oldsnapname is not None:
         cmd += ["&&", "rm", "-f", dirname + oldsnapname]
     # remove inconsistent newsnap if error in find
     cmd += ["||", "(", "rm", "-f", dirname + newsnapname, "&&", "false", ")"]
 
-    if ssh == None:
+    if ssh is None:
         ret = subprocess.call([findcmdlocal] + cmd, shell=True)
     else:
         ret = subprocess.call(ssh.getcmdlist() + [findcmdremote] + cmd)
@@ -333,14 +333,14 @@ def make_snapshots(ssh1, dir1name, ssh2, dir2name, oldsnapname, unresolved):
     newsnapname = ".bsync-snap-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S.%f")
     print("Updating filelists...")
     printv("Updating snap files: " + newsnapname + "...")
-    make_snapshot(ssh1, dir1name, oldsnapname, newsnapname)
-    make_snapshot(ssh2, dir2name, oldsnapname, newsnapname)
+    make_snapshot(ssh=ssh1, dirname=dir1name, oldsnapname=oldsnapname, newsnapname=newsnapname, unresolved=unresolved)
+    make_snapshot(ssh=ssh2, dirname=dir2name, oldsnapname=oldsnapname, newsnapname=newsnapname, unresolved=unresolved)
 
 
 # run find in a directory to dump its content
 def get_find_proc(ssh, dirname):
     global findformat, findcmdlocal, findcmdremote
-    if ssh == None:
+    if ssh is None:
         return subprocess.Popen([findcmdlocal, dirname, "-printf", findformat], stdout=subprocess.PIPE)
     else:
         return subprocess.Popen(
@@ -350,7 +350,7 @@ def get_find_proc(ssh, dirname):
 
 # get a file descriptor to read the snapshot file
 def get_snap_fd(ssh, dirname, snapname):
-    if ssh == None:
+    if ssh is None:
         return open(dirname + "/" + snapname, "rb")
     else:
         return subprocess.Popen(ssh.getcmdlist() + ["cat " + quote(dirname + "/" + snapname)],
@@ -361,7 +361,7 @@ def get_snap_fd(ssh, dirname, snapname):
 def get_bsync_files(ssh, dirname):
     files = set()
     try:
-        if ssh == None:
+        if ssh is None:
             for f in os.listdir(dirname):
                 f = tostr(f)  # avoid problems with non utf8 chars
                 if f.startswith(".bsync-"):
@@ -386,9 +386,9 @@ def get_bsync_files(ssh, dirname):
 
 # get ignore entries from .bsync-ignore file
 def get_ignores(ignorefile, ssh, dirname):
-    if ignorefile == None: return set()
+    if ignorefile is None: return set()
 
-    if ssh == None:
+    if ssh is None:
         with open(dirname + "/" + ignorefile) as fd:
             out = fd.read()
     else:
@@ -458,7 +458,7 @@ def read_file_record(gen):
         s = s.decode()
         perms = perms.decode()
     except StopIteration:
-        if i == None and p == None and t == None and d == None and s == None and perms == None:
+        if i is None and p is None and t is None and d is None and s is None and perms is None:
             return None
         else:
             sys.exit("Error: snap filelists not coherent.")
@@ -504,8 +504,8 @@ def load_orig(ssh1, dir1name, ssh2, dir2name):
     # iterate on gen1 to fill orig
     # first fill with 1st snap, then with 2nd snap, because the order can be different (in find output)
     record = read_file_record(gen1)
-    if record == None: sys.exit("Error reading files from dir1 filelist")  # should be at least one record (dir root)
-    while record != None:
+    if record is None: sys.exit("Error reading files from dir1 filelist")  # should be at least one record (dir root)
+    while record is not None:
         inode, path, type, date, size, perms, rec = record
 
         if not ignorepath(path, ignores):
@@ -515,8 +515,8 @@ def load_orig(ssh1, dir1name, ssh2, dir2name):
 
     # iterate on gen2, fill inodes for dir2 and check for consistency
     record = read_file_record(gen2)
-    if record == None: sys.exit("Error reading files from dir2 filelist")
-    while record != None:
+    if record is None: sys.exit("Error reading files from dir2 filelist")
+    while record is not None:
         inode, path, type, date, size, perms = record
 
         if not ignorepath(path, ignores):
@@ -539,7 +539,7 @@ def load_orig(ssh1, dir1name, ssh2, dir2name):
 
 
 def getdirstr(ssh, dirname):
-    return dirname if ssh == None else ssh.userhost + ":" + dirname
+    return dirname if ssh is None else ssh.userhost + ":" + dirname
 
 
 # load actual directory content
@@ -551,7 +551,7 @@ def load_dir(ssh, dirname, ignores):
     gen = fileLineIter(fd)
 
     record = read_file_record(gen)
-    while record != None:
+    while record is not None:
         inode, path, type, date, size, perms, rec = record
 
         if not ignorepath(path, ignores):
@@ -583,10 +583,10 @@ def getfilemode(type, perms):
 
 
 def show_conflict(f1, f2, path):
-    if f1 == None:
+    if f1 is None:
         p1 = "*deleted*"
         p2 = getfilemode(f2.type, f2.perms) + " " + f2.size + "B (" + getdatestr(f2) + ")"
-    elif f2 == None:
+    elif f2 is None:
         p1 = getfilemode(f1.type, f1.perms) + " " + f1.size + "B (" + getdatestr(f1) + ")"
         p2 = "*deleted*"
     else:
@@ -633,7 +633,7 @@ def ask_conflict(f1, f2, path, tokeep):
             answered_N = True
             return "n"
 
-        if resp != None:
+        if resp is not None:
             print("	1	Keep left version")
             print("	2	Keep right version")
             print("	1a	Keep left version for all")
@@ -654,7 +654,7 @@ def ask_conflict(f1, f2, path, tokeep):
 
 #### file actions
 def remove(shproc, path):
-    if shproc == None:
+    if shproc is None:
         os.remove(path)
     else:
         shproc.stdin.write(b"rm " + quotepath(path) + b"\n")
@@ -662,7 +662,7 @@ def remove(shproc, path):
 
 
 def removedir(shproc, path):
-    if shproc == None:
+    if shproc is None:
         try:
             os.rmdir(path)
         except OSError as e:
@@ -674,7 +674,7 @@ def removedir(shproc, path):
 
 
 def mkdir(shproc, path, perms):
-    if shproc == None:
+    if shproc is None:
         if perms == "":
             os.mkdir(path)
         else:
@@ -688,7 +688,7 @@ def mkdir(shproc, path, perms):
 
 
 def move(shproc, src, dst, perms):
-    if shproc == None:
+    if shproc is None:
         os.rename(src, dst)
         if perms != "":
             os.chmod(dst, int(perms, 8))
@@ -729,14 +729,14 @@ def get_dir_summary(mkdir, moves, rm, rmdirs, copy, sync):
 
 def print_files(fo, f1, f2):
     print("%s: i:%s d:%s | i:%s d:%s (orig)" % (fo.path, fo.i1, fo.date, fo.i2, fo.date))
-    f1str = f1str = "i:" + f1.i + " d:" + str(f1.date) if f1 != None else ""
-    f2str = f2str = "i:" + f2.i + " d:" + str(f2.date) if f2 != None else ""
+    f1str = "i:" + f1.i + " d:" + str(f1.date) if f1 is not None else ""
+    f2str = "i:" + f2.i + " d:" + str(f2.date) if f2 is not None else ""
     print("%s: %s | %s" % (fo.path, f1str, f2str))
 
 
 def print_files12(path, f1, f2):
-    f1str = f1str = "i:" + f1.i + " d:" + str(f1.date) + " p:" + str(f1.perms) if f1 != None else ""
-    f2str = f2str = "i:" + f2.i + " d:" + str(f2.date) + " p:" + str(f2.perms) if f2 != None else ""
+    f1str = "i:" + f1.i + " d:" + str(f1.date) + " p:" + str(f1.perms) if f1 is not None else ""
+    f2str = "i:" + f2.i + " d:" + str(f2.date) + " p:" + str(f2.perms) if f2 is not None else ""
     print("%s: %s | %s" % (path, f1str, f2str))
 
 
@@ -794,7 +794,7 @@ def apply_small_actions(ssh, dirname, mkdirs, moves, rm, rmdirs):
 
     shproc = None
     # if we need a ssh shell
-    if ssh != None:
+    if ssh is not None:
         shproc = ssh_shell_init(ssh)
 
     # mkdirss must be done before
@@ -815,7 +815,7 @@ def apply_small_actions(ssh, dirname, mkdirs, moves, rm, rmdirs):
     for path in rmdirs:
         removedir(shproc, dirname.encode() + b"/" + path)
 
-    if shproc != None:
+    if shproc is not None:
         shproc.stdin.close()
         shproc.wait()  # wait shell process to exit
         if shproc.returncode != 0:
@@ -852,7 +852,7 @@ def check_moves(copy, rm):
         fcandidate = rm.get(fsrc.i, None)  # check if we can use a move
 
         # check date to be sure that no change on file.
-        if fcandidate != None and fcandidate.type == fsrc.type and fcandidate.date == fsrc.date and fcandidate.size == fsrc.size:
+        if fcandidate is not None and fcandidate.type == fsrc.type and fcandidate.date == fsrc.date and fcandidate.size == fsrc.size:
             moves.append((fcandidate, fsrc))
             rm.pop(fsrc.i)
         else:
@@ -952,10 +952,10 @@ if ':' in dir1name[2:]:
 if ':' in dir2name[2:]:
     sshuserhost, dir2name = dir2name.split(':', 1)
     ssh = ssh2 = SshCon(sshuserhost, sshport, sshargs)
-if ssh1 != None and ssh2 != None:
+if ssh1 is not None and ssh2 is not None:
     sys.exit("Error: only one remote directory supported.")
 
-if ssh != None:
+if ssh is not None:
     ssh_master_init(ssh)
 
 # check rsync and find installs
@@ -992,14 +992,14 @@ for path, fo in origlist.items():
     f1 = dir1tmp[path] if path in dir1tmp else None
     f2 = dir2tmp[path] if path in dir2tmp else None
 
-    if f1 == None and f2 == None:
+    if f1 is None and f2 is None:
         pass
-    elif f1 != None and f2 != None and samefiles(f1, f2):
+    elif f1 is not None and f2 is not None and samefiles(f1, f2):
         pass
-    elif f2 != None and samefiles(f2, fo):
+    elif f2 is not None and samefiles(f2, fo):
         # no f2 change --> f1 change only
         pass
-    elif f1 != None and samefiles(f1, fo):
+    elif f1 is not None and samefiles(f1, fo):
         # no f1 change --> f2 change only
         pass
     else:
@@ -1012,10 +1012,10 @@ for path, fo in origlist.items():
 for path, f1 in dir1tmp.items():
     f2 = dir2tmp[path] if path in dir2tmp else None
 
-    if f2 != None and samefiles(f2, f1):
+    if f2 is not None and samefiles(f2, f1):
         # f1 and f2 added but same files --> nothing to do
         pass
-    elif f2 == None:
+    elif f2 is None:
         # adding in d2
         pass
     else:
@@ -1059,15 +1059,15 @@ for path, fo in origlist.items():
     f1 = dir1[path] if path in dir1 else None
     f2 = dir2[path] if path in dir2 else None
 
-    if f1 == None and f2 == None:
+    if f1 is None and f2 is None:
         # deleted both sides --> nothing to do
         pass
-    elif f1 != None and f2 != None and samefiles(f1, f2):
+    elif f1 is not None and f2 is not None and samefiles(f1, f2):
         # same file contents --> nothing to do
         pass
-    elif f2 != None and samefiles(f2, fo):
+    elif f2 is not None and samefiles(f2, fo):
         # no f2 change --> f1 change only
-        if f1 == None:
+        if f1 is None:
             # f1 deleted --> delete f2
             if syncmode == "backup":
                 unresolved.append(fo)
@@ -1076,39 +1076,39 @@ for path, fo in origlist.items():
             else:
                 rm2[fo.i1] = f2
         else:
-            # f1 != None and f1 != fo.date --> f1 mod --> mod f2
+            # f1 is not None and f1 != fo.date --> f1 mod --> mod f2
             sync12.append(path)
-    elif f1 != None and samefiles(f1, fo):
+    elif f1 is not None and samefiles(f1, fo):
         # no f1 change --> f2 change only
         if syncmode != "sync":
             unresolved.append(fo)
-        elif f2 == None:
+        elif f2 is None:
             if f1.type == "d":  # f1 isdir
                 rmdirs1.append(path)
             else:
                 rm1[fo.i2] = f1
         else:
             sync21.append(path)
-    elif syncmode == "backup" and f1 == None:
+    elif syncmode == "backup" and f1 is None:
         # f1 change and f2 change --> confict
-        # f1 == None and f2 != None --> keep unresolved for "backup" syncmode
+        # f1 is None and f2 is not None --> keep unresolved for "backup" syncmode
         unresolved.append(fo)
     else:
         # f1 change and f2 change --> confict
-        # f1 != None and f2 != None --> f1.date != f2.date (!= fo.date)
-        # f1 == None and f2 != None
-        # f1 != None and f2 == None
+        # f1 is not None and f2 is not None --> f1.date != f2.date (!= fo.date)
+        # f1 is None and f2 is not None
+        # f1 is not None and f2 is None
         # print_files(fo,f1,f2)
 
         tokeep = ask_conflict(f1, f2, path, tokeep);
         if tokeep[0] == "1":  # 1 or 1a
-            if f1 == None:
+            if f1 is None:
                 if f2.type == "d":  # f2 isdir
                     rmdirs2.append(path)
                 else:
                     rm2[fo.i1] = f2
             else:
-                if f2 == None:
+                if f2 is None:
                     if f1.type == "d":
                         mkdir2.append(f1)
                     else:
@@ -1116,13 +1116,13 @@ for path, fo in origlist.items():
                 else:
                     sync12.append(path)
         elif tokeep[0] == "2":  # 2 or 2a
-            if f2 == None:
+            if f2 is None:
                 if f1.type == "d":  # f1 isdir
                     rmdirs1.append(path)
                 else:
                     rm1[fo.i2] = f1
             else:
-                if f1 == None:
+                if f1 is None:
                     if f2.type == "d":
                         mkdir1.append(f2)
                     else:
@@ -1142,10 +1142,10 @@ printv("Analysing remaining new paths in dir1...")
 for path, f1 in dir1.items():
     f2 = dir2[path] if path in dir2 else None
 
-    if f2 != None and samefiles(f2, f1):
+    if f2 is not None and samefiles(f2, f1):
         # f1 and f2 added but same files --> nothing to do
         pass
-    elif f2 == None:
+    elif f2 is None:
         # adding in d2
         if f1.type == "d":
             mkdir2.append(f1)
@@ -1197,11 +1197,12 @@ if len(mkdir1) == 0 and len(moves1) == 0 and len(rm1) == 0 and len(rmdirs1) == 0
         print("Identical directories. Nothing to do.")
     else:
         print("Target dir is up to date. Nothing to do.")
-    if snapname == None:
-        make_snapshots(ssh1, dir1name, ssh2, dir2name, snapname, unresolved)
+    if snapname is None:
+        make_snapshots(ssh1=ssh1, dir1name=dir1name, ssh2=ssh2, dir2name=dir2name, oldsnapname=snapname, unresolved=unresolved)
     sys.exit()
 
-if len(conflicts) > 0: print_line()
+if len(conflicts) > 0:
+    print_line()
 print()
 print_action("ACTION", "(LEFT DIR CONTENT)", "   ", "(RIGHT DIR CONTENT)")
 print()
@@ -1236,7 +1237,7 @@ apply_rsync_actions(ssh2, dir2name, ssh1, dir1name, copy21 + sync21)
 
 if check: rsync_check(ssh1, dir1name, ssh2, dir2name)
 
-make_snapshots(ssh1, dir1name, ssh2, dir2name, snapname, unresolved)
+make_snapshots(ssh1=ssh1, dir1name=dir1name, ssh2=ssh2, dir2name=dir2name, oldsnapname=snapname, unresolved=unresolved)
 
 if not ssh2:
     with open(dir2name + '.bsync-remote', 'w') as fd:
