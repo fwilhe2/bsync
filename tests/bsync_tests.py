@@ -1,26 +1,44 @@
-import unittest, tempfile, os, subprocess, shutil
+import unittest, tempfile, os, subprocess, shutil, time
 
 dir1 = "dir1"
 dir2 = "dir2"
+
+from bsync import main as bsync_main
+from bsync import args as bsync_args
 
 
 class TestBase(unittest.TestCase):
 
     def setUp(self):
-        self._tempdir = tempfile.mkdtemp()
+        # self._tempdir = tempfile.mkdtemp()
+        self._tempdir = os.path.join(os.path.abspath(os.path.curdir), 'temp')
+        try:
+            os.mkdir(self._tempdir)
+        except FileExistsError as ex:
+            shutil.rmtree(self._tempdir)
+            os.mkdir(self._tempdir)
         self.dir1 = os.path.join(self._tempdir, dir1)
         self.dir2 = os.path.join(self._tempdir, dir2)
         os.mkdir(self.dir1)
         os.mkdir(self.dir2)
         self.counter = 0
+        print(f'Created directories {self.dir1} , {self.dir2}')
 
     def tearDown(self):
+        # input(f'About to remove contents of {self._tempdir} . Press ENTER')
         shutil.rmtree(self._tempdir)
         pass
 
     def bsync(self, args):
-        print(" ".join(["bsync"] + args + [self.dir1, self.dir2]))
-        with subprocess.Popen(["bsync"] + args + [self.dir1, self.dir2], shell=True, stdout=subprocess.PIPE) as proc:
+        bsync_args.read_from_commandline(args + [self.dir1, self.dir2])
+        print("bsync" + " ".join(args + [self.dir1, self.dir2]))
+
+        return bsync_main(bsync_args)
+
+    def bsync_shell(self, args):
+        command = ["bsync"] + args + [self.dir1, self.dir2]
+        print(" ".join(command))
+        with subprocess.Popen(" ".join(command), shell=True, stdout=subprocess.PIPE) as proc:
             fd = proc.stdout
             output = fd.read()
             fd.close()
