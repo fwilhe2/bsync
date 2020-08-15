@@ -51,7 +51,7 @@ def tostr(o):
 
 
 # a file record from snapshots (original file)
-class OrigFile():
+class OrigFile(object):
     def __init__(self, inode1, inode2, path, type, date, size, perms, r1, r2):
         self.path = path
         self.i1 = inode1
@@ -60,10 +60,12 @@ class OrigFile():
         self.date = date
         self.size = size
         self.perms = perms
+        self.r1 = r1
+        self.r2 = r2
 
 
 # a file record from an actual directory
-class DirFile():
+class DirFile(object):
     def __init__(self, inode, path, type, date, size, perms):
         self.i = inode
         self.path = path
@@ -73,7 +75,7 @@ class DirFile():
         self.perms = perms
 
 
-class SshCon():
+class SshCon(object):
     def __init__(self, userhost, port, customargs):
         self.userhost = userhost
         self.sock = None
@@ -117,6 +119,7 @@ def ssh_master_init(ssh):
     import tempfile, atexit
     import uuid
     from pathlib import Path
+    # tmpdir = tempfile.mkdtemp()
     tmpdir = Path(f'/tmp/_bsync_/{str(uuid.uuid4())[:7]}')
     tmpdir.mkdir(exist_ok=True, parents=True)
     ssh.sock = os.path.join(tmpdir, "bsync_%r@%h:%p")
@@ -284,7 +287,8 @@ def fix_unresolved(ssh, dirname, snapname, unresolved):
         gen = fileLineIter(fd)
 
         record = read_file_record(gen)
-        if record is None: sys.exit("Error reading files from filelist")  # should be at least one record (dir root)
+        if record is None:
+            sys.exit("Error reading files from filelist")  # should be at least one record (dir root)
         while record is not None:
             inode, path, type, date, size, perms, rec = record
             if path not in unresolved:
@@ -306,37 +310,61 @@ def fix_unresolved(ssh, dirname, snapname, unresolved):
             sys.exit("Error in process updating a snapshot.")
 
 
+def del_snapshot(ssh, dirname, snapname):
+    try:
+        if ssh is None:
+            os.remove(dirname + snapname)
+        else:
+            subprocess.check_call(ssh.getcmdlist() + ["rm", "-f", dirname + snapname])
+    except:
+        pass
+
+
 # take a snapshot of files states from dir, using find. store it in .bsync-snap-XXXX
 # snap format: inode, path, type, date...
-def make_snapshot(ssh, dirname, oldsnapname, newsnapname, unresolved):
+def make_snapshot(ssh, dirname, newsnapname, unresolved):
     global findformat, findcmdlocal, findcmdremote
 
-    cmd = [dirname, "-fprintf", os.path.join(dirname, newsnapname), findformat]
-    if oldsnapname is not None:
-        cmd += ["&&", "rm", "-f", os.path.join(dirname, oldsnapname)]
+    # cmd = [quote(dirname), "-fprintf", snap_file, findformat]
+    snap_file = quote(os.path.join(dirname, newsnapname))
+    cmd = f" {quote(dirname)} -fprintf {snap_file} '{findformat}'"
+
     # remove inconsistent newsnap if error in find
-    cmd += ["||", "(", "rm", "-f", os.path.join(dirname, newsnapname), "&&", "false", ")"]
+    # cmd += ["||", "(", "rm", "-f", snap_file, "&&", "false", ")"]
+    cmd += f" || ( rm -f {snap_file} && false )"
 
     if ssh is None:
-        logging.debug('Running %s' % ' '.join([findcmdlocal] + cmd))
-        ret = subprocess.call([findcmdlocal] + cmd, shell=True)
+        logging.debug('Running %s' % (findcmdlocal + cmd))
+        ret = subprocess.call(findcmdlocal + cmd, shell=True)
     else:
-        logging.debug('Running %s' % ' '.join(ssh.getcmdlist() + [findcmdremote] + cmd))
-        ret = subprocess.call(ssh.getcmdlist() + [findcmdremote] + cmd)
+        logging.debug('Running %s' % ' '.join(ssh.getcmdlist() + [findcmdremote + cmd]))
+        ret = subprocess.call(ssh.getcmdlist() + [findcmdremote + cmd])
 
-    if ret != 0: sys.exit("Error making a snapshot.")
+    if ret != 0:
+        sys.exit("Error making a snapshot.")
+
+
+    if os.path.exists(snap_file):
+        logging.debug(f'Created file: {snap_file}')
+    else:
+        logging.debug(f'File {snap_file} was NOT created!')
 
     if unresolved:
         fix_unresolved(ssh, dirname, newsnapname, unresolved)
 
 
 def make_snapshots(ssh1, dir1name, ssh2, dir2name, oldsnapname, unresolved):
-    newsnapname = ".bsync-snap-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S.%f")
+    newsnapname = ".bsync-snap-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S.%f") + ".txt"
     print("Updating filelists...")
     printv("Updating snap files: " + newsnapname + "...")
     logging.debug(f'dir1name={dir1name} dir2name={dir2name}')
-    make_snapshot(ssh=ssh1, dirname=dir1name, oldsnapname=oldsnapname, newsnapname=newsnapname, unresolved=unresolved)
-    make_snapshot(ssh=ssh2, dirname=dir2name, oldsnapname=oldsnapname, newsnapname=newsnapname, unresolved=unresolved)
+    make_snapshot(ssh=ssh1, dirname=dir1name, newsnapname=newsnapname, unresolved={fo.path: fo.r1 for fo in unresolved})
+    make_snapshot(ssh=ssh2, dirname=dir2name, newsnapname=newsnapname, unresolved={fo.path: fo.r2 for fo in unresolved})
+    # remove old snapshots only when new snapshots were created successfully, in order to prevent
+    # breaking backup completely when snapshot1 is created successfully but snapshot2 fails
+    if oldsnapname is not None:
+        del_snapshot(ssh1, dir1name, oldsnapname)
+        del_snapshot(ssh2, dir2name, oldsnapname)
 
 
 # run find in a directory to dump its content
@@ -388,7 +416,8 @@ def get_bsync_files(ssh, dirname):
 
 # get ignore entries from .bsync-ignore file
 def get_ignores(ignorefile, ssh, dirname):
-    if ignorefile is None: return set()
+    if ignorefile is None:
+        return set()
 
     if ssh is None:
         with open(dirname + "/" + ignorefile) as fd:
@@ -411,11 +440,14 @@ def get_ignores(ignorefile, ssh, dirname):
 # returns True if the path has to be ignored
 # ignore root path and .bsync files
 def ignorepath(path, ignoreset):
-    if path == b"" or path.startswith(b".bsync-snap"):
+    if path == b"" or path.startswith(b".bsync-"):
         return True
     else:
         for ignore in ignoreset:
-            if (path + b"/").startswith(ignore.encode()):
+            if ignore[0] == '*':
+                if ignore[1:].encode() in (path + b"/"):
+                    return True
+            elif (path + b"/").startswith(ignore.encode()):
                 return True
     return False
 
@@ -440,13 +472,15 @@ def fileLineIter(inputFile,
     partialLine = b''
     while True:
         charsJustRead = inputFile.read(readSize)
-        if not charsJustRead: break
+        if not charsJustRead:
+            break
         partialLine += charsJustRead
         lines = partialLine.split(inputNewline)
         partialLine = lines.pop()
         for line in lines:
             yield line + outputNewline.rstrip(b'\0')  # little mod
-    if partialLine: yield partialLine.rstrip(b'\0')  # little mod
+    if partialLine:
+        yield partialLine.rstrip(b'\0')  # little mod
 
 
 def read_file_record(gen):
@@ -511,7 +545,8 @@ def load_orig(ssh1, dir1name, ssh2, dir2name):
     # iterate on gen1 to fill orig
     # first fill with 1st snap, then with 2nd snap, because the order can be different (in find output)
     record = read_file_record(gen1)
-    if record is None: sys.exit("Error reading files from dir1 filelist")  # should be at least one record (dir root)
+    if record is None:
+        sys.exit("Error reading files from dir1 filelist")  # should be at least one record (dir root)
     while record is not None:
         inode, path, type, date, size, perms, rec = record
 
@@ -522,16 +557,19 @@ def load_orig(ssh1, dir1name, ssh2, dir2name):
 
     # iterate on gen2, fill inodes for dir2 and check for consistency
     record = read_file_record(gen2)
-    if record is None: sys.exit("Error reading files from dir2 filelist")
+    if record is None:
+        sys.exit("Error reading files from dir2 filelist")
     while record is not None:
-        inode, path, type, date, size, perms = record
+        inode, path, type, date, size, perms, rec = record
 
         if not ignorepath(path, ignores):
             # path not in orig: can happen if using ignore, then removing ignore, path will be considered as new
             if path in orig:
                 origfile = orig[path]
                 if origfile.type != type or origfile.date != date or origfile.size != size or origfile.perms != perms:
-                    sys.exit("Error: difference in snaps for path: " + tostr(path))
+                    # sys.exit("Error: difference in snaps for path: " + tostr(path))
+                    # causing conflict for this path on both sides (better than reporting snapshot corruption)
+                    origfile.date = -1
 
                 origfile.i2 = inode  # set the second inode
                 origfile.r2 = rec  # set the second record
@@ -579,8 +617,10 @@ def getdatestr(f):
 
 
 def getfilemode(type, perms):
-    if type == "f": type = "-"
-    if perms == "": return type
+    if type == "f":
+        type = "-"
+    if perms == "":
+        return type
     try:
         # filemode() only exists in pyton3.3
         return type + stat.filemode(int(perms, 8))[1:]
@@ -620,7 +660,8 @@ def show_conflict(f1, f2, path):
 
 def print_line():
     global console_width
-    if console_width == 0: console_width = 80
+    if console_width == 0:
+        console_width = 80
     print("~" * console_width)
 
 
@@ -651,7 +692,7 @@ def ask_conflict(f1, f2, path, tokeep):
 
         resp = myinput("Which one do I keep? [1/2/1a/2a/N/Na/Quit/Help] ").lower()
 
-        if resp.lower() in ("1", "1a", "2", "2a", "n", "na"):
+        if resp in ("1", "1a", "2", "2a", "n", "na"):
             if resp in ("n", "na"):
                 answered_N = True
             return resp
@@ -725,12 +766,18 @@ def print_action(action, path1, arrow, path2):
 
 def get_dir_summary(mkdir, moves, rm, rmdirs, copy, sync):
     actions = []
-    if len(mkdir) > 0:  actions.append("mkdir:" + str(len(mkdir)))
-    if len(moves) > 0:  actions.append("mv:" + str(len(moves)))
-    if len(rm) > 0:     actions.append("rm:" + str(len(rm)))
-    if len(rmdirs) > 0: actions.append("rmdir" + str(len(rmdirs)))
-    if len(copy) > 0:   actions.append("cp:" + str(len(copy)))
-    if len(sync) > 0:   actions.append("sync:" + str(len(sync)))
+    if len(mkdir) > 0:
+        actions.append("mkdir:" + str(len(mkdir)))
+    if len(moves) > 0:
+        actions.append("mv:" + str(len(moves)))
+    if len(rm) > 0:
+        actions.append("rm:" + str(len(rm)))
+    if len(rmdirs) > 0:
+        actions.append("rmdir" + str(len(rmdirs)))
+    if len(copy) > 0:
+        actions.append("cp:" + str(len(copy)))
+    if len(sync) > 0:
+        actions.append("sync:" + str(len(sync)))
     return " ".join(actions)
 
 
@@ -1220,7 +1267,7 @@ def main(args: Args):
     if all([len(mkdir1) == 0, len(moves1) == 0, len(rm1) == 0, len(rmdirs1) == 0, len(copy21) == 0, len(sync21) == 0,
             len(mkdir2) == 0, len(moves2) == 0, len(rm2) == 0, len(rmdirs2) == 0, len(copy12) == 0, len(sync12) == 0]):
         if args.check:
-            rsync_check(ssh1, dir1name, ssh2, dir2name, ssh=ssh)
+            rsync_check(sshSrc=ssh1, dirnameSrc=dir1name, sshDst=ssh2, dirnameDst=dir2name, ssh=ssh)
         if answered_N:
             print("Nothing to do. Some conflicts stay unresolved.")
         elif syncmode == "sync":
@@ -1245,12 +1292,13 @@ def main(args: Args):
     print("Todo in " + dir2namefull + ": " + get_dir_summary(mkdir2, moves2, rm2, rmdirs2, copy12, sync12))
 
     resp = "none"
-    if args.yes: resp = "y"
-    if args.batch: resp = "y"
+    if args.yes or args.batch:
+        resp = "y"
 
     while resp != "y" and resp != "n":
         resp = myinput("Apply actions? [y/N] ").lower()
-        if resp == "": resp = "n"
+        if resp == "":
+            resp = "n"
     print()
     if resp == "n":
         print("Leaving files in place.")
@@ -1267,7 +1315,7 @@ def main(args: Args):
     apply_rsync_actions(ssh2, dir2name, ssh1, dir1name, copy21 + sync21, ssh=ssh)
 
     if args.check:
-        rsync_check(ssh1, dir1name, ssh2, dir2name, ssh=ssh)
+        rsync_check(sshSrc=ssh1, dirnameSrc=dir1name, sshDst=ssh2, dirnameDst=dir2name, ssh=ssh)
 
     make_snapshots(ssh1=ssh1, dir1name=dir1name, ssh2=ssh2, dir2name=dir2name, oldsnapname=snapname,
                    unresolved=unresolved)
@@ -1280,15 +1328,17 @@ def main(args: Args):
 # Global Variables
 args = Args()
 findformat = "%i\\0%P\\0%y\\0%T@\\0%s\\0%#m\\0"
-findcmdlocal = None
-findcmdremote = None
+
+findcmdlocal = None  # type:str
+findcmdremote = None  # type:str
 # find test1/ -printf "%i\t%P\t%y\t%T@\t%s\t%#m\n"
-console_width = 0
-answered_N = False
-ignoreperms = False
-verbose = False
+console_width = 0  # type:int
+answered_N = False  # type:bool
+ignoreperms = False  # type:bool
+verbose = False  # type:bool
 
 if __name__ == '__main__':
     args.read_from_commandline()
+    os.putenv("PYTHONTRACEMALLOC", "1")
     main(args)
     print("Done!")

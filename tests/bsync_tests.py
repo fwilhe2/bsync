@@ -1,4 +1,4 @@
-import unittest, tempfile, os, subprocess, shutil, time
+import unittest, tempfile, os, subprocess, shutil, inspect
 
 dir1 = "dir1"
 dir2 = "dir2"
@@ -7,9 +7,24 @@ from bsync import main as bsync_main
 from bsync import args as bsync_args
 
 
+def unittest_verbosity():
+    """Return the verbosity setting of the currently running unittest
+       program, or 0 if none is running.
+       (https://stackoverflow.com/a/32883243/1259360)
+    """
+    frame = inspect.currentframe()
+    while frame:
+        self = frame.f_locals.get('self')
+        if isinstance(self, unittest.TestProgram):
+            return self.verbosity
+        frame = frame.f_back
+    return 0
+
+
 class TestBase(unittest.TestCase):
 
     def setUp(self):
+        self._verbosity = unittest_verbosity()
         # self._tempdir = tempfile.mkdtemp()
         self._tempdir = os.path.join(os.path.abspath(os.path.curdir), 'temp')
         try:
@@ -30,7 +45,10 @@ class TestBase(unittest.TestCase):
         pass
 
     def bsync(self, args):
-        bsync_args.read_from_commandline(args + [self.dir1, self.dir2])
+        verbArg = []
+        if self._verbosity >= 2:
+            verbArg = ["-v"]
+        bsync_args.read_from_commandline(force_arg_list=verbArg + args + [self.dir1, self.dir2])
         print("bsync" + " ".join(args + [self.dir1, self.dir2]))
 
         return bsync_main(bsync_args)
@@ -50,13 +68,14 @@ class TestBase(unittest.TestCase):
         return "o" * num
 
     def updfile(self, dir, name):
-        if type(name) is list:
-            for n in name:
-                with open(os.path.join(self._tempdir, dir, n), "w") as f:
-                    f.write(self._val(self.counter))
-                    self.counter += 1
-        else:
-            with open(os.path.join(self._tempdir, dir, name), "w") as f:
+        """
+        update the provided file(s), write counter * o characters, and increase counter
+        :param dir:
+        :param name:
+        """
+
+        for n in name if type(name) is list else [name]:
+            with open(os.path.join(self._tempdir, dir, n), "w") as f:
                 f.write(self._val(self.counter))
                 self.counter += 1
 
@@ -64,18 +83,12 @@ class TestBase(unittest.TestCase):
         os.remove(os.path.join(self._tempdir, dir, name))
 
     def assertExists(self, dir, name, msg=None):
-        if type(name) is list:
-            for n in name:
-                self.assertTrue(os.path.exists(os.path.join(self._tempdir, dir, n)), msg)
-        else:
-            self.assertTrue(os.path.exists(os.path.join(self._tempdir, dir, name)), msg)
+        for n in name if type(name) is list else [name]:
+            self.assertTrue(os.path.exists(os.path.join(self._tempdir, dir, n)), msg)
 
     def assertNotExists(self, dir, name, msg=None):
-        if type(name) is list:
-            for n in name:
-                self.assertFalse(os.path.exists(os.path.join(self._tempdir, dir, n)), msg)
-        else:
-            self.assertFalse(os.path.exists(os.path.join(self._tempdir, dir, name)), msg)
+        for n in name if type(name) is list else [name]:
+            self.assertFalse(os.path.exists(os.path.join(self._tempdir, dir, n)), msg)
 
     def assertFileContains(self, dir, name, value, msg=None):
         self.assertExists(dir, name, msg)
@@ -267,4 +280,4 @@ class TestMixed(TestBase):
 
 
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=1)

@@ -2,10 +2,10 @@
 
 export BSYNC="./bsync"
 
-export DIR1=/tmp/bsyncdir1
-export DIR2=/tmp/bsyncdir2
+export DIR1=$(dirname $0)/temp/bsyncdir1
+export DIR2=$(dirname $0)/temp/bsyncdir2
 export SSHLOGIN=$(whoami)@localhost
-export SSHDIR=/tmp/bsyncremotetestdir
+export SSHDIR=$(dirname $0)/temp/bsyncremotetestdir
 
 rm -rf "$DIR1" 
 rm -rf "$DIR2" 
@@ -147,6 +147,8 @@ test_exotic_filename_ssh() {
 }
 
 ########
+
+pwd
 
 test_no_args
 test_dir_not_here

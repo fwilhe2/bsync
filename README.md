@@ -43,11 +43,11 @@ Usage: bsync [options] DIR1 DIR2
 	DIR can be user@sshserver:DIR
     -v              Verbose
     -i              Ignore permissions
-    -c		        Check that directories are identical
+    -c              Check that directories are identical
     -m MODE         sync|backup|mirror (defult sync)
-	    backup - copy new and modified from DIR1 to DIR2
-	    mirror - backup + missing in DIR1 remove from DIR2
-	    sync   - bidirectional mirror\n"
+	                    backup - copy new and modified from DIR1 to DIR2
+	                    mirror - backup + missing in DIR1 remove from DIR2
+	                    sync   - bidirectional mirror
     -y              Ignore confirm changes prompt
     -b              Batch mode (exit on conflict)
     -p PORT         Port for SSH
@@ -109,10 +109,10 @@ A sample run with a conflict: file deleted one side and updated the other side.
     Conflicting changes on: testfile
     *deleted*                           <?>   -rw-r--r-- 7B (2014-01-30 18:47:40) (conflict)
     Which one do I keep [1/2/?] ?
-    	1	Keep left version
-    	2	Keep right version
-    	1a	Keep left version for all
-    	2a	Keep right version for all
+        1   Keep left version
+        2   Keep right version
+        1a  Keep left version for all
+        2a  Keep right version for all
     Which one do I keep [1/2/?] 2
     dir1/                                    dir2/                               
                                         <--  testfile                            (copy)
@@ -136,6 +136,16 @@ Say, if I have a `dir1/.bsync-ignore` file with content:
 `dir1/path/to/ignoredir` (+content) and `dir1/path/to/ignorefile` will be ignored in the next bsync runs.
 
 The ignore file has to be very simple. No comments, just path prefixes.
+
+
+forks
+-----
+
+Based on bsync original code from https://github.com/dooblem/bsync
+
+With additional code and concepts take from:
+* https://github.com/xarx00/bsync
+
 
 ### See also
 
