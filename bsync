@@ -50,6 +50,15 @@ def tostr(o):
         return o
 
 
+def run(cmd: str) -> (int, str, str):
+    os.environ['PYTHONUNBUFFERED'] = "1"
+    proc = subprocess.Popen(["/bin/sh", "-c", cmd],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+    stdout, stderr = proc.communicate()
+    return proc.returncode, stdout, stderr
+
+
 # a file record from snapshots (original file)
 class OrigFile(object):
     def __init__(self, inode1, inode2, path, type, date, size, perms, r1, r2):
@@ -204,7 +213,11 @@ def find_check_command(ssh):
         except:
             try:
                 subprocess.check_call(["gfind"] + findargs, stdout=devnull, stderr=devnull)
-                localfind = "gfind"
+                returncode, stdout, stderr = run('which gfind')
+                if 'gfind' in stdout.decode("utf-8"):
+                    localfind = stdout.decode("utf-8").rstrip("\n")
+                else:
+                    localfind = "gfind"
             except:
                 sys.exit("Error: local GNU find not found. " + findhelp)
 
@@ -335,14 +348,14 @@ def make_snapshot(ssh, dirname, newsnapname, unresolved):
 
     if ssh is None:
         logging.debug('Running %s' % (findcmdlocal + cmd))
-        ret = subprocess.call(findcmdlocal + cmd, shell=True)
+        # ret = subprocess.call(findcmdlocal + cmd, shell=True)
+        ret, stdout, stderr = run(findcmdlocal + cmd)
     else:
         logging.debug('Running %s' % ' '.join(ssh.getcmdlist() + [findcmdremote + cmd]))
         ret = subprocess.call(ssh.getcmdlist() + [findcmdremote + cmd])
 
     if ret != 0:
         sys.exit("Error making a snapshot.")
-
 
     if os.path.exists(snap_file):
         logging.debug(f'Created file: {snap_file}')
@@ -1277,7 +1290,7 @@ def main(args: Args):
         if snapname is None:
             make_snapshots(ssh1=ssh1, dir1name=dir1name, ssh2=ssh2, dir2name=dir2name, oldsnapname=snapname,
                            unresolved=unresolved)
-        sys.exit()
+        return 0
 
     if len(conflicts) > 0:
         print_line()
@@ -1302,7 +1315,7 @@ def main(args: Args):
     print()
     if resp == "n":
         print("Leaving files in place.")
-        sys.exit()
+        return 0
 
     print("Applying actions...")
 
@@ -1323,6 +1336,8 @@ def main(args: Args):
     if not ssh2:
         with open(os.path.join(dir2name, '.bsync-remote'), 'w') as fd:
             fd.write(dir1namefull + '\n')
+    print("Done")
+    return 0
 
 
 # Global Variables
@@ -1339,6 +1354,7 @@ verbose = False  # type:bool
 
 if __name__ == '__main__':
     args.read_from_commandline()
-    os.putenv("PYTHONTRACEMALLOC", "1")
-    main(args)
+    os.environ["PYTHONTRACEMALLOC"] = "1"
+    ret = main(args)
     print("Done!")
+    sys.exit(ret)
