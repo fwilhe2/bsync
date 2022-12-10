@@ -9,7 +9,7 @@ export SSHDIR=$(dirname $0)/temp/bsyncremotetestdir
 
 rm -rf "$DIR1"
 rm -rf "$DIR2"
-export sshargs=" -p 2222 -S/tmp/bsynctest_%r@%h:%p "
+export sshargs=" -o StrictHostKeyChecking=no -p 2222 -S/tmp/bsynctest_%r@%h:%p "
 ssh $sshargs -fNM $SSHLOGIN # open master cxion
 ssh $sshargs $SSHLOGIN "rm -rf $SSHDIR"
 
