@@ -15,7 +15,7 @@
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// Allow using ssh passwordless for running tests
-	"postCreateCommand": "ssh-keygen -t rsa -N '' -f ~/.ssh/id_rsa && cat ~/.ssh/id_rsa.pub > ~/.ssh/authorized_keys && test -f /home/vscode/.ssh/known_hosts && ssh-keygen -f /home/vscode/.ssh/known_hosts -R \"[localhost]:2222\""
+	"postCreateCommand": "./.devcontainer/postCreateCommand.sh"
 
 	// Configure tool-specific properties.
 	// "customizations": {},
