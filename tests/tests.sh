@@ -7,9 +7,9 @@ export DIR2=$(dirname $0)/temp/bsyncdir2
 export SSHLOGIN=$(whoami)@localhost
 export SSHDIR=$(dirname $0)/temp/bsyncremotetestdir
 
-rm -rf "$DIR1" 
-rm -rf "$DIR2" 
-export sshargs=" -S/tmp/bsynctest_%r@%h:%p "
+rm -rf "$DIR1"
+rm -rf "$DIR2"
+export sshargs=" -p 2222 -S/tmp/bsynctest_%r@%h:%p "
 ssh $sshargs -fNM $SSHLOGIN # open master cxion
 ssh $sshargs $SSHLOGIN "rm -rf $SSHDIR"
 
@@ -153,7 +153,7 @@ pwd
 test_no_args
 test_dir_not_here
 
-mkdir $DIR1
+mkdir -p $DIR1
 mkdir $DIR2
 
 test_empty_dirs
@@ -191,8 +191,8 @@ test_exotic_filename_ssh
 
 ########
 
-rm -rf "$DIR1" 
-rm -rf "$DIR2" 
+rm -rf "$DIR1"
+rm -rf "$DIR2"
 ssh $sshargs $SSHLOGIN "rm -rf $SSHDIR"
 ssh $sshargs $SSHLOGIN -Oexit
 
